@@ -1,0 +1,228 @@
+source: sic4 is duckdb.table('./SICcodes.csv') extend {
+dimension: sic is SIC:::number
+dimension: SECOffice is column1
+dimension: Description is column2
+dimension: SIC is column0:::number
+dimension: SIC3 is trunc(SIC / 10)
+dimension: SIC2 is trunc(SIC / 100)
+dimension: SIC1 is trunc(SIC / 1000)
+dimension: Description_nc is replace(Description,',','.')
+primary_key: SIC
+}
+
+
+source: sub is duckdb.table('./sub_2025*.csv') extend {
+dimension: city_and_state_country is concat(cityba, ', ', stprba, ', ', countryba)
+dimension: city_and_state is concat(cityba, ', ', stprba,)
+dimension: cik_str is cik::string
+dimension: sic_str is sic::string
+dimension: name_no_comma is replace(name,',','.')
+measure: no_reports is count(cik)
+primary_key: adsh
+dimension: major_code is trunc(sic / 100)
+dimension: period_timestamp is period::timestamp
+dimension: num_days_P_to_filed is days(period to filed)
+dimension: num_days_filed_to_acc is days(filed to accepted::date)
+dimension: num_minutes_filed_to_acc is minutes(filed::timestamp to accepted)
+dimension: industry_code is trunc(sic / 10)
+dimension: division is trunc(sic / 1000)
+join_one: sic4 with sic
+}
+
+source: num is duckdb.table('./num_2025*.csv') extend {
+join_one: sub with adsh
+}
+
+
+run: sub -> {
+  where: form = "S-1"
+  group_by:
+    sic,
+    sic4.Description_nc
+  aggregate: filings is count()
+  order_by: filings desc
+}
+
+run: sub -> {
+  where: form = "S-1/A"
+  group_by:
+    sic,
+    sic4.Description_nc
+  aggregate: filings is count()
+  order_by: filings desc
+}
+
+run: sub -> {
+  where: form = "S-1"
+  aggregate:
+    avg_days_P_to_filed is avg(num_days_P_to_filed)
+    avg_days_filed_to_acc is avg(num_days_filed_to_acc)
+    avg_minutes_filed_to_acc is avg(num_minutes_filed_to_acc)
+}
+
+run: sub -> {
+  where: form = "S-1/A"
+  aggregate:
+    avg_days_P_to_filed is avg(num_days_P_to_filed)
+    avg_days_filed_to_acc is avg(num_days_filed_to_acc)
+    avg_minutes_filed_to_acc is avg(num_minutes_filed_to_acc)
+}
+
+run: num -> {
+  where: sub.form = "S-1"
+  group_by:
+    sub.adsh,
+    sub.name_no_comma,
+    tag,
+    value
+}
+
+run: num -> {
+  where: sub.form = "S-1/A"
+  group_by:
+    sub.adsh,
+    sub.name_no_comma,
+    tag,
+    value
+}
+
+run: sub -> {
+  where: form = "S-1"
+  group_by:
+    countryba,
+    stprba,
+    cityba
+  aggregate: filings is count()
+  order_by: filings desc
+}
+
+run: sub -> {
+  where: form = "S-1/A"
+  group_by:
+    countryba,
+    stprba,
+    cityba
+  aggregate: filings is count()
+  order_by: filings desc
+}
+
+run: num -> {
+  where: sub.form = "S-1" and lower(tag) ~ "%revenue%"
+  group_by:
+    sub.name_no_comma,
+    tag
+  aggregate:
+    avg_revenue is avg(value)
+  order_by: avg_revenue desc
+}
+
+run: num -> {
+  where: sub.form = "S-1/A" and lower(tag) ~ "%revenue%"
+  group_by:
+    sub.name_no_comma,
+    tag
+  aggregate:
+    avg_revenue is avg(value)
+  order_by: avg_revenue desc
+}
+
+run: num -> {
+  where: sub.form = "S-1"
+  group_by: tag
+  aggregate: tag_count is count()
+  order_by: tag_count desc
+  limit: 25 }
+
+run: num -> {
+  where: sub.form = "S-1/A"
+  group_by: tag
+  aggregate: tag_count is count()
+  order_by: tag_count desc
+  limit: 25 }
+
+run: num -> {
+  where: sub.form = "S-1"
+  group_by: tag
+  aggregate: avg_value is avg(value)
+  order_by: avg_value desc
+  limit: 50 }
+
+run: num -> {
+  where: sub.form = "S-1/A"
+  group_by: tag
+  aggregate: avg_value is avg(value)
+  order_by: avg_value desc
+  limit: 50 }
+
+run: num -> {
+  where: sub.form = "S-1"
+  group_by:
+    sub.sic,
+    sub.sic4.Description,
+    tag
+  aggregate:
+    avg_value is avg(value)
+  order_by: sic }
+
+run: num -> {
+  where: sub.form = "S-1/A"
+  group_by:
+    sub.sic,
+    sub.sic4.Description,
+    tag
+  aggregate:
+    avg_value is avg(value)
+  order_by: sic }
+
+# bar_chart
+run: num -> {
+  where: sub.form = "S-1"
+  group_by: tag
+  aggregate: tag_count is count()
+  order_by: tag_count desc
+  limit: 25
+}
+
+# bar_chart
+run: num -> {
+  where: sub.form = "S-1/A"
+  group_by: tag
+  aggregate: tag_count is count()
+  order_by: tag_count desc
+  limit: 25
+}
+
+# bar_chart
+run: num -> {
+  where: sub.form = "S-1" and lower(tag) ~ "%revenue%"
+  group_by: sub.name_no_comma
+  aggregate: avg_revenue is avg(value)
+  order_by: avg_revenue desc
+  limit: 20
+}
+
+# bar_chart
+run: num -> {
+  where: sub.form = "S-1/A" and lower(tag) ~ "%revenue%"
+  group_by: sub.name_no_comma
+  aggregate: avg_revenue is avg(value)
+  order_by: avg_revenue desc
+  limit: 20
+}
+
+# line_chart
+run: sub -> {
+  where: form = "S-1"
+  group_by: filing_date is quarter(filed::date)
+  aggregate: filings is count()
+  order_by: filing_date
+}
+
+
+# line_chart
+run: sub -> {
+  where: form = "S-1/A"
+  group_by: filing_date is quarter(filed::date)
+  aggregate: filings is count()
+  order_by: filing_date
+}
